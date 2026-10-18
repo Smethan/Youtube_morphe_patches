@@ -28,6 +28,31 @@ clone_tag morphe-patches-gradle-plugin v1.3.4
 clone_tag morphe-patcher v1.15.1
 clone_tag morphe-patches-library v1.9.0-dev.9
 
+# The public plugin tag signs every Maven publication. A local composite build
+# needs the plugin artifacts but has no release signing key. Restore the public
+# source file after publication, including when Gradle exits with an error.
+plugin_build_file=$source_root/morphe-patches-gradle-plugin/build.gradle.kts
+plugin_build_backup=$(mktemp)
+cp -p "$plugin_build_file" "$plugin_build_backup"
+restore_plugin_build() {
+    cp -p "$plugin_build_backup" "$plugin_build_file"
+    rm -f "$plugin_build_backup"
+}
+trap restore_plugin_build EXIT
+python3 - "$plugin_build_file" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+source = path.read_text()
+plugin_line = "    signing\n"
+signing_block = "signing {\n    useGpgCmd()\n\n    sign(publishing.publications)\n}\n"
+if plugin_line in source and signing_block in source:
+    path.write_text(source.replace(plugin_line, "", 1).replace(signing_block, "", 1))
+elif plugin_line in source or signing_block in source:
+    raise SystemExit("Unexpected upstream plugin signing configuration")
+PY
+
 export MORPHE_COMPOSITE_ROOT=$source_root
 # The upstream settings plugin constructs a fallback GitHub Packages repository
 # even when local composite builds provide its artifacts.
@@ -35,9 +60,9 @@ export GITHUB_ACTOR=${GITHUB_ACTOR:-public-source-build}
 export GITHUB_TOKEN=${GITHUB_TOKEN:-unused}
 
 "$repo_root/gradlew" -p "$source_root/morphe-patches-gradle-plugin" \
-    -Dmaven.repo.local="$maven_repo" publishToMavenLocal --no-daemon \
-    -x signPluginMavenPublication \
-    -x signPatchesSettingsPluginPluginMarkerMavenPublication
+    -Dmaven.repo.local="$maven_repo" publishToMavenLocal --no-daemon
+restore_plugin_build
+trap - EXIT
 
 if [[ ${1:-} == --prepare-only ]]; then
     exit 0
