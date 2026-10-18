@@ -42,7 +42,7 @@ private val COMPATIBILITY_YOUTUBE_21_42_241 = Compatibility(
 @Suppress("unused")
 val savePostImagePatch = bytecodePatch(
     name = "Save community post images",
-    description = "Adds a long-press action to save community post images.",
+    description = "Adds image-saving actions to a community post's three-dot menu.",
 ) {
     dependsOn(
         sharedExtensionPatch,
@@ -52,43 +52,57 @@ val savePostImagePatch = bytecodePatch(
     compatibleWith(COMPATIBILITY_YOUTUBE_21_42_241)
 
     execute {
-        val method = BackstageImageBindFingerprint.method
-
-        // `rq(aufh, Object)` receives a bcty image model in p2. The renderer stores its
-        // primary image view in `f`; the secondary badge is `h`. Use local temporaries at
-        // method entry, before the original body assigns its own locals, and invoke on every
-        // bind so the extension can clear stale state when a recycled item has no image.
-        method.addInstructions(
+        // aefq.rq binds bcty.b (the image model) into its actual backstage
+        // ImageView. Keep this mapping fresh as recycled post rows are rebound.
+        BackstageImageBindFingerprint.method.addInstructions(
             0,
             """
-                iget-object v0, p0, ${method.definingClass}->f:Landroid/widget/ImageView;
-                check-cast p2, Lbcty;
-                iget-object v1, p2, Lbcty;->b:Lbnfs;
-                invoke-static { v0, v1 }, $EXTENSION_CLASS->bindImage(Landroid/widget/ImageView;Ljava/lang/Object;)V
+                move-object/from16 v0, p2
+                check-cast v0, Lbcty;
+                iget-object v1, v0, Lbcty;->b:Lbnfs;
+                move-object/from16 v0, p0
+                iget-object v2, v0, ${BackstageImageBindFingerprint.method.definingClass}->f:Landroid/widget/ImageView;
+                invoke-static { v2, v1 }, $EXTENSION_CLASS->bindVisiblePostImage(Landroid/widget/ImageView;Ljava/lang/Object;)V
             """,
         )
 
-        // The renderer's unbind runs when its host recycles the image view without another
-        // rq() call. Clear the listener after the original image cleanup, on every unbind.
         BackstageImageUnbindFingerprint.method.apply {
             findInstructionIndicesReversedOrThrow(Opcode.RETURN_VOID).forEach { index ->
                 addInstructions(
                     index,
                     """
                         iget-object v0, p0, ${BackstageImageUnbindFingerprint.method.definingClass}->f:Landroid/widget/ImageView;
-                        const/4 p1, 0x0
-                        invoke-static { v0, p1 }, $EXTENSION_CLASS->bindImage(Landroid/widget/ImageView;Ljava/lang/Object;)V
+                        const/4 v1, 0x0
+                        invoke-static { v0, v1 }, $EXTENSION_CLASS->bindVisiblePostImage(Landroid/widget/ImageView;Ljava/lang/Object;)V
                     """,
                 )
             }
         }
 
-        // Route host touches to the extension, which only installs long-click handling on
-        // the existing clickable ancestor when ACTION_DOWN belongs to a currently bound image.
-        SavePostImageComponentHostTouchFingerprint.method.addInstructions(
+        // auoo.f receives both the post row root and its three-dot anchor.
+        // Copy parameters into low locals for a verifier-safe invoke-static.
+        PostMenuAnchorBindFingerprint.method.addInstructions(
             0,
-            "invoke-static { p0, p1 }, $EXTENSION_CLASS->" +
-                    "onComponentHostTouch(Lcom/facebook/litho/ComponentHost;Landroid/view/MotionEvent;)V",
+            """
+                move-object/from16 v0, p1
+                move-object/from16 v1, p2
+                invoke-static { v0, v1 }, $EXTENSION_CLASS->bindPostMenuAnchor(Landroid/view/View;Landroid/view/View;)V
+            """,
+        )
+
+        // p2 is the button, p3 is YouTube's menu tag, and p0 holds the native
+        // popup. The extension captures post image URLs before the menu opens,
+        // then appends its own actions after YouTube has shown the popup. These
+        // parameters occupy high registers in this method, so copy them into
+        // unused entry locals for the non-range invoke-static instruction.
+        PostOverflowMenuFingerprint.method.addInstructions(
+            0,
+            """
+                move-object/from16 v0, p2
+                move-object/from16 v1, p0
+                move-object/from16 v2, p3
+                invoke-static { v0, v1, v2 }, $EXTENSION_CLASS->onPostMenuOpening(Landroid/view/View;Ljava/lang/Object;Ljava/lang/Object;)V
+            """,
         )
     }
 }

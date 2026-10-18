@@ -5,20 +5,21 @@ import static app.morphe.extension.shared.StringRef.str;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
-import android.graphics.Rect;
-import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewParent;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import android.widget.ListPopupWindow;
+import android.widget.ListView;
 import android.widget.ImageView;
-import android.widget.PopupMenu;
-
-import com.facebook.litho.ComponentHost;
+import android.widget.PopupWindow;
+import android.widget.TextView;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,6 +28,10 @@ import java.lang.reflect.Field;
 import java.lang.ref.WeakReference;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.WeakHashMap;
@@ -36,7 +41,7 @@ import java.util.concurrent.Executors;
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.Utils;
 
-/** Saves the exact community-post image bound to a long-pressed view. */
+/** Adds image-saving actions to YouTube's native community-post menu. */
 @SuppressWarnings("unused")
 public final class SavePostImagePatch {
     private static final long MAX_IMAGE_BYTES = 50L * 1024L * 1024L;
@@ -47,231 +52,444 @@ public final class SavePostImagePatch {
         return thread;
     });
 
-    // Values contain no view reference, so stale entries disappear when YouTube
-    // releases recycled image views.
-    private static final WeakHashMap<ImageView, Binding> BINDINGS = new WeakHashMap<>();
-    private static WeakReference<View> activeLongClickView = new WeakReference<>(null);
-    private static WeakReference<ImageView> activeImage = new WeakReference<>(null);
-
-    private static final class Binding {
-        String url;
-        boolean fallbackInstalled;
-        boolean wasClickable;
-        boolean wasLongClickable;
-        boolean clickDelegated;
-
-        Binding(String url) {
-            this.url = url;
-        }
-    }
+    private static WeakReference<ListView> activeList = new WeakReference<>(null);
+    private static List<WeakReference<View>> activeFooters = new ArrayList<>();
+    private static WeakReference<ViewGroup> activeAlternateRoot = new WeakReference<>(null);
+    private static WeakReference<PopupWindow> activeAlternatePopup = new WeakReference<>(null);
+    private static WeakReference<Object> activeAlternateController = new WeakReference<>(null);
+    private static volatile long menuGeneration;
+    private static final WeakHashMap<ImageView, String> BOUND_POST_IMAGES = new WeakHashMap<>();
+    private static final WeakHashMap<View, WeakReference<View>> ANCHOR_ROWS = new WeakHashMap<>();
 
     private SavePostImagePatch() {
     }
 
-    /**
-     * Injection point in the community image binder. Called for every bind,
-     * including an empty model, so a recycled view never keeps its old URL.
-     */
-    public static void bindImage(ImageView imageView, Object imageModel) {
-        if (imageView == null) {
-            return;
-        }
-
-        String url;
+    /** Records the URL actually bound to a backstage image view, including carousel rebinds. */
+    public static void bindVisiblePostImage(ImageView imageView, Object imageModel) {
+        if (imageView == null) return;
+        String url = null;
         try {
             url = bestImageUrl(imageModel);
         } catch (Exception ex) {
-            Logger.printException(() -> "Post image URL extraction failed", ex);
-            url = null;
+            Logger.printException(() -> "Could not read a bound post image", ex);
         }
-
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            // Image binding normally runs on the UI thread. Do not mutate a View
-            // from a background callback if YouTube changes that behavior.
-            final String resolvedUrl = url;
-            imageView.post(() -> applyBinding(imageView, resolvedUrl));
+        final String boundUrl = url;
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            recordBoundImage(imageView, boundUrl);
         } else {
-            applyBinding(imageView, url);
+            imageView.post(() -> recordBoundImage(imageView, boundUrl));
         }
     }
 
-    private static void applyBinding(ImageView imageView, String url) {
-        Binding previous = BINDINGS.get(imageView);
-        if (url == null) {
-            if (previous != null) {
-                BINDINGS.remove(imageView);
-                removeFallback(imageView, previous);
-                if (activeImage.get() == imageView) {
-                    clearActiveLongClick();
+    private static void recordBoundImage(ImageView imageView, String url) {
+        if (url == null) BOUND_POST_IMAGES.remove(imageView);
+        else BOUND_POST_IMAGES.put(imageView, url);
+    }
+
+    /** Associates YouTube's menu anchor with the row it belongs to. */
+    public static void bindPostMenuAnchor(View rowRoot, View anchor) {
+        if (rowRoot != null && anchor != null) {
+            ANCHOR_ROWS.put(anchor, new WeakReference<>(rowRoot));
+        }
+    }
+
+    /**
+     * Called at the entry of YouTube's post-menu opening method. The native menu
+     * remains responsible for showing itself; actions are appended after either
+     * native popup implementation has populated and shown.
+     */
+    public static void onPostMenuOpening(View anchor, Object menuController, Object menuTag) {
+        if (anchor == null || menuController == null) {
+            return;
+        }
+
+        // The current image must come from the visible bound view. The post
+        // model's first image is not necessarily the selected carousel image.
+        final String currentUrl = findVisibleBoundImage(anchor);
+        final String postId = postIdFromTag(menuTag);
+        final long generation;
+        synchronized (SavePostImagePatch.class) {
+            generation = ++menuGeneration;
+        }
+        MAIN.post(() -> {
+            if (generation != menuGeneration) {
+                return;
+            }
+            removeActiveFooters();
+            if (currentUrl == null && postId == null) {
+                return;
+            }
+            try {
+                ListPopupWindow listPopup = getShowingListPopup(menuController);
+                if (listPopup != null) {
+                    addListPopupActions(anchor, listPopup, currentUrl, postId, generation);
+                    return;
                 }
+                addAlternatePopupActions(anchor, menuController, currentUrl, postId, generation);
+            } catch (Exception ex) {
+                Logger.printException(() -> "Could not append actions to the YouTube community menu popup", ex);
             }
-            return;
-        }
-        if (previous != null) {
-            if (!previous.url.equals(url) && activeImage.get() == imageView) {
-                clearActiveLongClick();
-            }
-            previous.url = url;
-            return;
-        }
-
-        Binding binding = new Binding(url);
-        BINDINGS.put(imageView, binding);
-        // In Litho feeds, use the existing clickable parent as the gesture
-        // target. For non-Litho detail views, install a view-local fallback
-        // once this ImageView is attached and its full hierarchy is known.
-        imageView.post(() -> installFallbackIfNeeded(imageView, binding));
-    }
-
-    /** Observe a normal Litho touch without consuming it or changing its tap route. */
-    public static void onComponentHostTouch(ComponentHost host, MotionEvent event) {
-        if (event.getActionMasked() != MotionEvent.ACTION_DOWN || BINDINGS.isEmpty()) {
-            return;
-        }
-        try {
-            clearActiveLongClick();
-            ImageView image = findBoundImageAt(host, event.getRawX(), event.getRawY());
-            if (image == null) {
-                return;
-            }
-            View clickTarget = findClickableAncestor(image);
-            if (clickTarget == null || clickTarget.isLongClickable()) {
-                return;
-            }
-            Binding binding = BINDINGS.get(image);
-            if (binding == null) {
-                return;
-            }
-            removeFallback(image, binding);
-            final String pressedUrl = binding.url;
-            activeImage = new WeakReference<>(image);
-            activeLongClickView = new WeakReference<>(clickTarget);
-            clickTarget.setOnLongClickListener(pressed -> {
-                ImageView current = activeImage.get();
-                Binding currentBinding = BINDINGS.get(image);
-                return current == image && currentBinding == binding
-                        && pressedUrl.equals(currentBinding.url)
-                        && showSaveMenu(image, pressedUrl);
-            });
-        } catch (Exception ex) {
-            Logger.printException(() -> "Post image touch hook failed", ex);
-            clearActiveLongClick();
-        }
-    }
-
-    private static ImageView findBoundImageAt(ComponentHost host, float rawX, float rawY) {
-        Rect visible = new Rect();
-        for (ImageView image : BINDINGS.keySet()) {
-            if (image != null && image.isShown() && isDescendantOf(image, host)
-                    && image.getGlobalVisibleRect(visible)
-                    && visible.contains((int) rawX, (int) rawY)) {
-                return image;
-            }
-        }
-        return null;
-    }
-
-    private static boolean isDescendantOf(View child, View ancestor) {
-        ViewParent parent = child.getParent();
-        while (parent instanceof View) {
-            if (parent == ancestor) {
-                return true;
-            }
-            parent = parent.getParent();
-        }
-        return false;
-    }
-
-    private static boolean hasComponentHostAncestor(View imageView) {
-        ViewParent parent = imageView.getParent();
-        while (parent instanceof View) {
-            if (parent instanceof ComponentHost) {
-                return true;
-            }
-            parent = parent.getParent();
-        }
-        return false;
-    }
-
-    private static void installFallbackIfNeeded(ImageView imageView, Binding binding) {
-        if (BINDINGS.get(imageView) != binding || !imageView.isAttachedToWindow()
-                || hasComponentHostAncestor(imageView) || imageView.isLongClickable()) {
-            return;
-        }
-        binding.wasClickable = imageView.isClickable();
-        binding.wasLongClickable = imageView.isLongClickable();
-        binding.clickDelegated = !binding.wasClickable;
-        if (binding.clickDelegated) {
-            imageView.setOnClickListener(ignored -> {
-                View target = findClickableAncestor(imageView);
-                if (target != null) {
-                    target.performClick();
-                }
-            });
-        }
-        imageView.setOnLongClickListener(pressed -> {
-            Binding current = BINDINGS.get(imageView);
-            return current == binding && showSaveMenu(imageView, binding.url);
         });
-        binding.fallbackInstalled = true;
     }
 
-    private static void removeFallback(ImageView imageView, Binding binding) {
-        if (!binding.fallbackInstalled) {
+    private static void addListPopupActions(View anchor, ListPopupWindow popup,
+            String currentUrl, String postId, long generation) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Logger.printException(() -> "ListPopupWindow footer insertion requires Android 10+; alternate PopupWindow path was not active");
             return;
         }
-        imageView.setOnLongClickListener(null);
-        imageView.setLongClickable(binding.wasLongClickable);
-        if (binding.clickDelegated) {
-            imageView.setOnClickListener(null);
-            imageView.setClickable(binding.wasClickable);
+        ListView list = popup.getListView();
+        if (list == null || !popup.isShowing()) {
+            Logger.printException(() -> "Post image actions unavailable: shown ListPopupWindow has no ListView");
+            return;
         }
-        binding.fallbackInstalled = false;
+        Context context = anchor.getContext();
+        View current = makeFooter(context, str("smethan_save_post_image_current"));
+        View all = makeFooter(context, str("smethan_save_post_image_all"));
+        current.setOnClickListener(view -> {
+            if (generation != menuGeneration) return;
+            removeActiveFooters();
+            popup.dismiss();
+            saveCurrent(context, anchor, currentUrl);
+        });
+        all.setOnClickListener(view -> {
+            if (generation != menuGeneration) return;
+            removeActiveFooters();
+            popup.dismiss();
+            saveAll(context, postId);
+        });
+        // Keep YouTube's adapter and rows intact; non-selectable footers do not
+        // add synthetic positions to its native menu click handler.
+        list.addFooterView(current, null, false);
+        list.addFooterView(all, null, false);
+        activeList = new WeakReference<>(list);
+        activeFooters = new ArrayList<>(2);
+        activeFooters.add(new WeakReference<>(current));
+        activeFooters.add(new WeakReference<>(all));
+        popup.show();
     }
 
-    private static void clearActiveLongClick() {
-        View view = activeLongClickView.get();
-        if (view != null) {
-            view.setOnLongClickListener(null);
-            view.setLongClickable(false);
+    private static void addAlternatePopupActions(View anchor, Object controller,
+            String currentUrl, String postId, long generation) throws ReflectiveOperationException {
+        Object wrapper = getShowingAlternateController(controller);
+        if (wrapper == null) {
+            Logger.printException(() -> "Post image actions unavailable: neither auoo.u nor the active auoo.e PopupWindow path is showing");
+            return;
         }
-        activeLongClickView = new WeakReference<>(null);
-        activeImage = new WeakReference<>(null);
-    }
-
-    private static View findClickableAncestor(View imageView) {
-        ViewParent parent = imageView.getParent();
-        while (parent instanceof View) {
-            View view = (View) parent;
-            if (view.isClickable()) {
-                return view;
+        String wrapperName = wrapper.getClass().getName();
+        PopupWindow popup;
+        ViewGroup footerParent;
+        Object sizingContainer = null;
+        boolean hasCustomAuthLayout = false;
+        if ("defpackage.auth".equals(wrapperName)) {
+            popup = readPopupField(wrapper, "d");
+            Object customLayout = readField(wrapper, "e"); // autf recalculates its bounded dimensions on layout.
+            hasCustomAuthLayout = customLayout != null;
+            footerParent = customLayout == null ? null : readViewGroupField(customLayout, "d");
+            if (footerParent == null) {
+                footerParent = findMenuLinearLayout(popup == null ? null : popup.getContentView());
             }
-            parent = view.getParent();
+        } else if ("defpackage.autk".equals(wrapperName)) {
+            popup = readPopupField(wrapper, "c");
+            sizingContainer = readField(wrapper, "d"); // autm owns menu measurement and placement.
+            footerParent = sizingContainer == null ? null : readViewGroupField(sizingContainer, "a");
+        } else {
+            Logger.printException(() -> "Post image actions unavailable: unsupported autj implementation " + wrapperName);
+            return;
         }
-        return null;
+        if (popup == null || !popup.isShowing() || footerParent == null) {
+            Logger.printException(() -> "Post image actions unavailable: active " + wrapperName + " popup or native footer container could not be resolved");
+            return;
+        }
+
+        Context context = anchor.getContext();
+        View current = makeFooter(context, str("smethan_save_post_image_current"));
+        View all = makeFooter(context, str("smethan_save_post_image_all"));
+        current.setOnClickListener(view -> runAlternateAction(generation, context, anchor, currentUrl, postId,
+                true, wrapper, popup));
+        all.setOnClickListener(view -> runAlternateAction(generation, context, anchor, currentUrl, postId,
+                false, wrapper, popup));
+        footerParent.addView(current, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        footerParent.addView(all, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        activeAlternateRoot = new WeakReference<>(footerParent);
+        activeAlternatePopup = new WeakReference<>(popup);
+        activeAlternateController = new WeakReference<>(wrapper);
+        activeFooters = new ArrayList<>(2);
+        activeFooters.add(new WeakReference<>(current));
+        activeFooters.add(new WeakReference<>(all));
+
+        footerParent.requestLayout();
+        View content = popup.getContentView();
+        if (content != null) content.requestLayout();
+        if (sizingContainer != null) {
+            // autk's autm.c() recomputes the popup's bounded height and location
+            // from all children. Apply that placement to prevent fixed-size
+            // PopupWindow clipping when the two footer rows are appended.
+            resizeAutkPopup(sizingContainer, popup);
+        } else if (!hasCustomAuthLayout) {
+            // The undecorated auth variant uses a wrap-content LinearLayout as
+            // PopupWindow content, so refresh its measured height explicitly.
+            popup.update(popup.getWidth(), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
     }
 
-    private static boolean showSaveMenu(ImageView imageView, String pressedUrl) {
-        Binding binding = BINDINGS.get(imageView);
-        if (binding == null || pressedUrl == null || !imageView.isAttachedToWindow()) {
-            return false;
-        }
-        // The URL was captured with the gesture. A feed rebind while the popup
-        // is open cannot switch the download to another post's image.
+    private static void runAlternateAction(long generation, Context context, View anchor,
+            String currentUrl, String postId, boolean saveCurrent, Object wrapper, PopupWindow popup) {
+        if (generation != menuGeneration) return;
+        removeActiveFooters();
+        dismissPopup(popup, wrapper);
+        if (saveCurrent) saveCurrent(context, anchor, currentUrl);
+        else saveAll(context, postId);
+    }
+
+    private static void resizeAutkPopup(Object sizingContainer, PopupWindow popup) {
         try {
-            PopupMenu popup = new PopupMenu(imageView.getContext(), imageView);
-            popup.getMenu().add(str("smethan_save_post_image"));
-            popup.setOnMenuItemClickListener(item -> {
-                Context context = imageView.getContext().getApplicationContext();
-                Utils.showToastShort(str("smethan_save_post_image_saving"));
-                DOWNLOADS.execute(() -> download(context, pressedUrl));
-                return true;
-            });
-            popup.show();
-            return true;
+            Object placement = sizingContainer.getClass().getMethod("c").invoke(sizingContainer);
+            Object size = readField(placement, "b");
+            Object point = readField(placement, "c");
+            int width = ((Number) size.getClass().getMethod("getWidth").invoke(size)).intValue();
+            int height = ((Number) size.getClass().getMethod("getHeight").invoke(size)).intValue();
+            int x = sizePointCoordinate(point, "x");
+            int y = sizePointCoordinate(point, "y");
+            popup.update(x, y, width, height);
         } catch (Exception ex) {
-            Logger.printException(() -> "Post image save menu failed", ex);
-            return false;
+            Logger.printException(() -> "autk PopupWindow footer added but custom size refresh failed; menu may clip the footer", ex);
+        }
+    }
+
+    private static int sizePointCoordinate(Object point, String fieldName) throws ReflectiveOperationException {
+        return point.getClass().getField(fieldName).getInt(point);
+    }
+
+    private static void dismissPopup(PopupWindow popup, Object wrapper) {
+        try {
+            if (wrapper != null) {
+                wrapper.getClass().getMethod("c").invoke(wrapper);
+            } else if (popup != null && popup.isShowing()) {
+                popup.dismiss();
+            }
+        } catch (Exception ex) {
+            Logger.printException(() -> "Could not dismiss community post menu after image action", ex);
+        }
+    }
+
+    private static View makeFooter(Context context, String label) {
+        TextView view = new TextView(context);
+        view.setText(label);
+        view.setTextSize(16);
+        int horizontal = Math.round(16 * context.getResources().getDisplayMetrics().density);
+        int vertical = Math.round(14 * context.getResources().getDisplayMetrics().density);
+        view.setPadding(horizontal, vertical, horizontal, vertical);
+        view.setMinHeight(Math.round(48 * context.getResources().getDisplayMetrics().density));
+        view.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        view.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        view.setClickable(true);
+        view.setFocusable(true);
+        view.setBackgroundResource(android.R.drawable.list_selector_background);
+        return view;
+    }
+
+    private static void removeActiveFooters() {
+        ListView list = activeList.get();
+        ViewGroup alternateRoot = activeAlternateRoot.get();
+        if (list != null) {
+            for (WeakReference<View> footerReference : activeFooters) {
+                try {
+                    View footer = footerReference.get();
+                    if (footer != null) {
+                        list.removeFooterView(footer);
+                    }
+                } catch (Exception ex) {
+                    Logger.printException(() -> "Could not remove stale post image menu footer", ex);
+                }
+            }
+        }
+        if (alternateRoot != null) {
+            for (WeakReference<View> footerReference : activeFooters) {
+                try {
+                    View footer = footerReference.get();
+                    if (footer != null && footer.getParent() == alternateRoot) {
+                        alternateRoot.removeView(footer);
+                    }
+                } catch (Exception ex) {
+                    Logger.printException(() -> "Could not remove stale alternate-popup image action", ex);
+                }
+            }
+        }
+        activeFooters = new ArrayList<>();
+        activeList = new WeakReference<>(null);
+        activeAlternateRoot = new WeakReference<>(null);
+        activeAlternatePopup = new WeakReference<>(null);
+        activeAlternateController = new WeakReference<>(null);
+    }
+
+    private static ListPopupWindow getShowingListPopup(Object controller) {
+        // In this YouTube build the menu controller is auoo and its field u is
+        // the active ListPopupWindow. Read only that exact runtime class field.
+        try {
+            Object popup = readField(controller, "u");
+            return popup instanceof ListPopupWindow && ((ListPopupWindow) popup).isShowing()
+                    ? (ListPopupWindow) popup : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static Object getShowingAlternateController(Object controller) {
+        try {
+            Object wrapper = readField(controller, "e");
+            if (wrapper == null || !(wrapper.getClass().getName().equals("defpackage.auth")
+                    || wrapper.getClass().getName().equals("defpackage.autk"))) {
+                return null;
+            }
+            Object showing = wrapper.getClass().getMethod("g").invoke(wrapper);
+            return Boolean.TRUE.equals(showing) ? wrapper : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static PopupWindow readPopupField(Object owner, String name) throws ReflectiveOperationException {
+        Object popup = readField(owner, name);
+        return popup instanceof PopupWindow ? (PopupWindow) popup : null;
+    }
+
+    private static ViewGroup readViewGroupField(Object owner, String name) throws ReflectiveOperationException {
+        Object value = readField(owner, name);
+        return value instanceof ViewGroup ? (ViewGroup) value : null;
+    }
+
+    private static Object readField(Object owner, String name) throws ReflectiveOperationException {
+        Field field = owner.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(owner);
+    }
+
+    private static ViewGroup findMenuLinearLayout(View root) {
+        if (!(root instanceof ViewGroup)) return null;
+        ViewGroup group = (ViewGroup) root;
+        ViewGroup best = null;
+        if (root instanceof LinearLayout && containsRecyclerView(root)) {
+            best = group;
+        }
+        for (int i = 0; i < group.getChildCount(); i++) {
+            ViewGroup candidate = findMenuLinearLayout(group.getChildAt(i));
+            if (candidate != null) best = candidate;
+        }
+        return best;
+    }
+
+    private static boolean containsRecyclerView(View root) {
+        if (root.getClass().getName().endsWith("RecyclerView")) return true;
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (containsRecyclerView(group.getChildAt(i))) return true;
+            }
+        }
+        return false;
+    }
+
+    private static String findVisibleBoundImage(View anchor) {
+        WeakReference<View> reference = ANCHOR_ROWS.get(anchor);
+        View row = reference == null ? null : reference.get();
+        if (row == null || !row.isAttachedToWindow()) return null;
+        Rect rowBounds = new Rect();
+        if (!row.getGlobalVisibleRect(rowBounds)) return null;
+        ArrayDeque<View> pending = new ArrayDeque<>();
+        pending.add(row);
+        String bestUrl = null;
+        long bestArea = 0;
+        int examined = 0;
+        while (!pending.isEmpty() && examined++ < 256) {
+            View view = pending.removeFirst();
+            if (view instanceof ImageView) {
+                String url = BOUND_POST_IMAGES.get(view);
+                if (url != null && view.isShown()) {
+                    Rect imageBounds = new Rect();
+                    if (view.getGlobalVisibleRect(imageBounds) && imageBounds.intersect(rowBounds)) {
+                        long area = (long) imageBounds.width() * imageBounds.height();
+                        if (area > bestArea) {
+                            bestArea = area;
+                            bestUrl = url;
+                        }
+                    }
+                }
+            }
+            if (view instanceof ViewGroup) {
+                ViewGroup group = (ViewGroup) view;
+                for (int i = 0; i < group.getChildCount(); i++) pending.addLast(group.getChildAt(i));
+            }
+        }
+        return bestUrl;
+    }
+
+    private static String postIdFromTag(Object menuTag) {
+        if (menuTag == null || !"defpackage.aean".equals(menuTag.getClass().getName())) return null;
+        try {
+            Object post = menuTag.getClass().getField("b").get(menuTag);
+            Object id = post.getClass().getField("i").get(post);
+            return id instanceof String ? (String) id : null;
+        } catch (Exception ex) {
+            Logger.printException(() -> "Could not read the community post ID", ex);
+            return null;
+        }
+    }
+
+    private static void saveCurrent(Context context, View anchor, String openedUrl) {
+        // A bind may finish while the menu opens, so resolve once more on click.
+        String visibleUrl = findVisibleBoundImage(anchor);
+        String url = visibleUrl != null ? visibleUrl : openedUrl;
+        if (url == null) {
+            Utils.showToastShort(str("smethan_save_post_image_current_unavailable"));
+            return;
+        }
+        saveSnapshot(context, Collections.singletonList(url));
+    }
+
+    private static void saveSnapshot(Context context, List<String> snapshot) {
+        // Snapshot the currently visible image URL before queuing asynchronous work.
+        List<String> immutableUrls = new ArrayList<>(snapshot);
+        Context appContext = context.getApplicationContext();
+        Utils.showToastShort(str("smethan_save_post_image_saving"));
+        for (int i = 0; i < immutableUrls.size(); i++) {
+            final int index = i + 1;
+            final int count = immutableUrls.size();
+            final String url = immutableUrls.get(i);
+            try {
+                DOWNLOADS.execute(() -> download(appContext, url, index, count));
+            } catch (Exception ex) {
+                Logger.printException(() -> "Could not queue post image download", ex);
+                MAIN.post(() -> Utils.showToastShort(str("smethan_save_post_image_failed")));
+            }
+        }
+    }
+
+    private static void saveAll(Context context, String postId) {
+        if (postId == null) {
+            Utils.showToastShort(str("smethan_save_post_image_all_unavailable"));
+            return;
+        }
+        Context appContext = context.getApplicationContext();
+        Utils.showToastShort(str("smethan_save_post_image_saving_all"));
+        try {
+            DOWNLOADS.execute(() -> {
+                try {
+                    List<String> urls = PostImageWebResolver.resolve(postId);
+                    for (int i = 0; i < urls.size(); i++) {
+                        download(appContext, urls.get(i), i + 1, urls.size());
+                    }
+                } catch (Exception ex) {
+                    Logger.printException(() -> "Could not resolve all images for community post " + postId, ex);
+                    MAIN.post(() -> Utils.showToastShort(str("smethan_save_post_image_all_unavailable")));
+                }
+            });
+        } catch (Exception ex) {
+            Logger.printException(() -> "Could not queue all post images", ex);
+            Utils.showToastShort(str("smethan_save_post_image_failed"));
         }
     }
 
@@ -291,8 +509,7 @@ public final class SavePostImagePatch {
                 continue;
             }
             Class<?> variantClass = variant.getClass();
-            Field urlField = variantClass.getField("c");
-            Object urlValue = urlField.get(variant);
+            Object urlValue = variantClass.getField("c").get(variant);
             if (!(urlValue instanceof String)) {
                 continue;
             }
@@ -374,7 +591,7 @@ public final class SavePostImagePatch {
         throw new IOException("Too many image redirects");
     }
 
-    private static void download(Context context, String sourceUrl) {
+    private static void download(Context context, String sourceUrl, int index, int count) {
         Uri item = null;
         HttpURLConnection connection = null;
         ContentResolver resolver = context.getContentResolver();
@@ -439,7 +656,10 @@ public final class SavePostImagePatch {
             if (resolver.update(item, ready, null, null) != 1) {
                 throw new IOException("Could not publish image in Pictures");
             }
-            MAIN.post(() -> Utils.showToastShort(str("smethan_save_post_image_saved")));
+            final String message = count > 1
+                    ? "Post image " + index + " of " + count + " saved"
+                    : str("smethan_save_post_image_saved");
+            MAIN.post(() -> Utils.showToastShort(message));
         } catch (Exception ex) {
             if (item != null) {
                 try {
@@ -449,7 +669,10 @@ public final class SavePostImagePatch {
                 }
             }
             Logger.printException(() -> "Post image download failed", ex);
-            MAIN.post(() -> Utils.showToastShort(str("smethan_save_post_image_failed")));
+            final String message = count > 1
+                    ? "Post image " + index + " of " + count + " failed"
+                    : str("smethan_save_post_image_failed");
+            MAIN.post(() -> Utils.showToastShort(message));
         } finally {
             if (connection != null) {
                 connection.disconnect();

@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 /** Real-APK gate for the inspected experimental target; skipped when no APK is supplied. */
 class SavePostImagePatchTargetTest {
     @Test
-    fun `image bind recycle and gesture hooks apply to YouTube 21 42 241`() {
+    fun `post overflow menu hook applies to YouTube 21 42 241`() {
         val apkPath = System.getProperty("savePostImageApk")
         assumeTrue(!apkPath.isNullOrBlank()) {
             "Pass -PsavePostImageApk=/absolute/path/to/youtube-21.42.241.apk"
@@ -32,8 +32,7 @@ class SavePostImagePatchTargetTest {
                 verifier = SdkDexVerifier(File(sdk)),
             )
         ).use { patcher ->
-            // The upstream default feed action patch also hooks
-            // ComponentHost.dispatchTouchEvent; verify both can be applied.
+            // Keep a common upstream default feed patch in the same patch set.
             patcher += setOf(savePostImagePatch, feedVideoActionsPatch)
             runBlocking {
                 patcher().collect { result ->

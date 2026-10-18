@@ -461,8 +461,12 @@ Reports are public and are reviewed before a channel is added to a list. Removal
     <string name="morphe_copy_comments_success">Comment copied to clipboard</string>
 
     <!-- interaction.savepostimage.savePostImagePatch -->
-    <string name="smethan_save_post_image">Save image</string>
+    <string name="smethan_save_post_image_current">Save current image</string>
+    <string name="smethan_save_post_image_all">Save all images</string>
     <string name="smethan_save_post_image_saving">Saving image…</string>
+    <string name="smethan_save_post_image_saving_all">Loading post images…</string>
+    <string name="smethan_save_post_image_current_unavailable">Could not find the visible post image</string>
+    <string name="smethan_save_post_image_all_unavailable">Could not load all post images</string>
     <string name="smethan_save_post_image_saved">Image saved to Pictures/YouTube</string>
     <string name="smethan_save_post_image_failed">Could not save image</string>
 

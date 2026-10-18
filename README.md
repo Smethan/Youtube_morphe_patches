@@ -10,7 +10,7 @@ This fork includes the usual upstream Morphe patches. Select **Save community po
 
 ## Save community post images
 
-This fork patch targets the experimental YouTube **21.42.241** APK on Android 10 or newer. Long press a community post image, tap **Save image**, and the highest-resolution image variant offered by the post is written to `Pictures/YouTube`. The saved image is tied to the pressed post image, including when feed views are recycled. This exact APK target is intentionally narrower than the rest of the upstream catalog.
+This fork patch targets the experimental YouTube **21.42.241** APK on Android 10 or newer. Open an image post's **three-dot menu** and choose **Save current image** for the image currently visible in the post, or **Save all images** for every image attached to that post. Images are written to `Pictures/YouTube`. The current-image action follows the image view that YouTube has bound to the visible post, including when feed views are recycled. The all-images action reads the post's public YouTube page to find its image list, so it needs an internet connection and may be unavailable for posts that YouTube does not serve publicly. This exact APK target is intentionally narrower than the rest of the upstream catalog.
 
 ## Build and release
 
@@ -122,7 +122,7 @@ This fork retains the upstream patch catalog and records fork changes in its Git
 | [Restore original titles](#restore-original-titles) | Adds an option to show the original video titles, video descriptions and channel descriptions instead of the auto-translated ones. |  |
 | [Return YouTube Dislike](#return-youtube-dislike) | Adds an option to show the dislike count of videos with Return YouTube Dislike. |  |
 | [Sanitize sharing links](#sanitize-sharing-links) | Removes the tracking query parameters from shared links. |  |
-| [Save community post images](#save-community-post-images) | Adds a long-press action to save community post images. |  |
+| [Save community post images](#save-community-post-images) | Adds Save current image and Save all images to a community post's three-dot menu. |  |
 | [Save to Watch later](#save-to-watch-later) | Adds an option to display save to Watch later button in the video player. |  |
 | [Seekbar](#seekbar) | Adds options to show old seekbar thumbnails, disable precise seeking when swiping up on the seekbar, slide to seek instead of playing at 2x speed when pressing and holding, tapping the player seekbar to seek, hiding the video player seekbar, enabling seeking in live streams, and expanding the live stream DVR duration. |  |
 | [Series tracking](#series-tracking) | Adds a series library to History with local progress and episode continuation. This patch works with YouTube 21.02 and newer. |  |

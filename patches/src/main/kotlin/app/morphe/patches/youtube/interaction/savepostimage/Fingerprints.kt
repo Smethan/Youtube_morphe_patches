@@ -25,11 +25,7 @@ private object BackstageImageLayoutFingerprint : Fingerprint(
     ),
 )
 
-/**
- * Binds a community post image model to the ImageView from [BackstageImageLayoutFingerprint].
- * The `bcty` cast and image-model field, plus both image-loading paths, distinguish this from
- * other `aufj.rq` binders.
- */
+/** Binds a backstage post image model to the actual rendered ImageView. */
 internal object BackstageImageBindFingerprint : Fingerprint(
     classFingerprint = BackstageImageLayoutFingerprint,
     name = "rq",
@@ -47,7 +43,7 @@ internal object BackstageImageBindFingerprint : Fingerprint(
     ),
 )
 
-/** Unbinds and recycles the same backstage image view after its post item leaves the host. */
+/** Clears the image mapping when YouTube recycles a backstage image renderer. */
 internal object BackstageImageUnbindFingerprint : Fingerprint(
     classFingerprint = BackstageImageLayoutFingerprint,
     name = "hB",
@@ -66,10 +62,30 @@ internal object BackstageImageUnbindFingerprint : Fingerprint(
     ),
 )
 
-/** Receives host touches so the extension can route long presses from a bound image safely. */
-internal object SavePostImageComponentHostTouchFingerprint : Fingerprint(
-    definingClass = "Lcom/facebook/litho/ComponentHost;",
-    name = "dispatchTouchEvent",
-    returnType = "Z",
-    parameters = listOf("Landroid/view/MotionEvent;"),
+/** Binds the containing post row and its three-dot anchor for later menu actions. */
+internal object PostMenuAnchorBindFingerprint : Fingerprint(
+    definingClass = "Lauoo;",
+    name = "f",
+    returnType = "V",
+    parameters = listOf(
+        "Landroid/view/View;",
+        "Landroid/view/View;",
+        "Lbjak;",
+        "Ljava/lang/Object;",
+        "Lanei;",
+    ),
+)
+
+/**
+ * YouTube's innertube overflow controller. Its `h` method builds and shows the
+ * three-dot menu for a post row as a ListPopupWindow on the usual phone path.
+ */
+internal object PostOverflowMenuFingerprint : Fingerprint(
+    definingClass = "Lauoo;",
+    name = "h",
+    returnType = "V",
+    parameters = listOf("Lbjak;", "Landroid/view/View;", "Ljava/lang/Object;", "Lanei;"),
+    filters = listOf(
+        methodCall(definingClass = "Landroid/widget/ListPopupWindow;", name = "show"),
+    ),
 )
