@@ -460,6 +460,12 @@ Reports are public and are reviewed before a channel is added to a list. Removal
     <string name="morphe_copy_comments_summary">Tap and hold a comment to copy it</string>
     <string name="morphe_copy_comments_success">Comment copied to clipboard</string>
 
+    <!-- interaction.savepostimage.savePostImagePatch -->
+    <string name="smethan_save_post_image">Save image</string>
+    <string name="smethan_save_post_image_saving">Saving image…</string>
+    <string name="smethan_save_post_image_saved">Image saved to Pictures/YouTube</string>
+    <string name="smethan_save_post_image_failed">Could not save image</string>
+
     <!-- interaction.feedactions.feedVideoActionsPatch -->
     <string name="morphe_feed_long_press_menu_title">Tap and hold to open video menu</string>
     <string name="morphe_feed_long_press_menu_summary">Tapping and holding anywhere on a feed video opens its menu</string>

@@ -4,12 +4,12 @@ group = "app.morphe"
 
 patches {
     about {
-        name = "Morphe Patches"
-        description = "Patches for Morphe"
-        source = "git@github.com:MorpheApp/morphe-patches.git"
-        author = "MorpheApp"
-        contact = "na"
-        website = "https://morphe.software"
+        name = "Smethan YouTube Patches"
+        description = "YouTube post image saving with the upstream patch catalog"
+        source = "https://github.com/Smethan/Youtube_morphe_patches"
+        author = "Smethan and upstream contributors"
+        contact = "https://github.com/Smethan/Youtube_morphe_patches/issues"
+        website = "https://github.com/Smethan/Youtube_morphe_patches"
         license = "GNU General Public License v3.0, with additional GPL section 7 requirements"
     }
 }
@@ -54,6 +54,12 @@ tasks {
     test {
         useJUnitPlatform()
         jamApk.orNull?.let { systemProperty("jamApk", it) }
+        providers.gradleProperty("savePostImageApk").orNull?.let {
+            systemProperty("savePostImageApk", it)
+            // The experimental YouTube APK is over 200 MB. Resource decoding
+            // and DEX verification run inside the forked test JVM.
+            maxHeapSize = "6g"
+        }
     }
 
     register<JavaExec>("checkStringResources") {

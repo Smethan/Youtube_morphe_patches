@@ -2,25 +2,29 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      send_fcm:
-        description: 'Send FCM push notification'
-        type: boolean
-        default: true
   push:
     branches:
       - main
+      - dev
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
+    if: github.ref_name == 'main' || github.ref_name == 'dev'
     name: Release
     permissions:
       contents: write
-      packages: write
-      id-token: write
-      attestations: write
-      actions: write
+      packages: read
     runs-on: ubuntu-latest
+    env:
+      MORPHE_COMPOSITE_ROOT: ${{ runner.temp }}/morphe-public-sources
+      MORPHE_LOCAL_MAVEN: ${{ runner.temp }}/morphe-maven
+      GRADLE_OPTS: -Dmaven.repo.local=${{ runner.temp }}/morphe-maven
+      GITHUB_ACTOR: public-source-build
+      GITHUB_TOKEN: unused
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -36,6 +40,12 @@ jobs:
       - name: Cache Gradle
         uses: burrunan/gradle-cache-action@v3
 
+      - name: Install Android 36 SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' < <(yes)
+
+      - name: Prepare public Morphe build dependencies
+        run: bash scripts/build-from-public-sources.sh --prepare-only
+
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
@@ -43,60 +53,9 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Release
+      - name: Build and release this fork
         uses: cycjimmy/semantic-release-action@v6
-        id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Attest
-        if: steps.release.outputs.new_release_published == 'true'
-        uses: actions/attest-build-provenance@v3
-        with:
-          subject-name: 'Morphe Patches ${{ steps.release.outputs.new_release_git_tag }}'
-          subject-path: patches/build/libs/patches-*.mpp
-
-      - name: Generate website deploy token
-        if: steps.release.outputs.new_release_published == 'true'
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.MORPHE_AAMATT_APP_ID }}
-          private-key: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
-          owner: MorpheApp
-
-      - name: Trigger website deploy
-        if: steps.release.outputs.new_release_published == 'true'
-        uses: actions/github-script@v9
-        with:
-          github-token: ${{ steps.app-token.outputs.token }}
-          script: |
-            await github.rest.repos.createDispatchEvent({
-              owner: 'MorpheApp',
-              repo: 'morphe-website',
-              event_type: 'trigger-deploy'
-            })
-
-      - name: Wait before sending FCM
-        if: steps.release.outputs.new_release_published == 'true' && (github.event_name == 'push' || inputs.send_fcm == true)
-        run: sleep 300
-
-      - name: Setup Python for FCM
-        if: steps.release.outputs.new_release_published == 'true' && (github.event_name == 'push' || inputs.send_fcm == true)
-        uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-
-      - name: Send FCM push notification
-        if: steps.release.outputs.new_release_published == 'true' && (github.event_name == 'push' || inputs.send_fcm == true)
-        env:
-          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
-          FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
-          FCM_TYPE: bundle_update
-          FCM_VERSION: ${{ steps.release.outputs.new_release_version }}
-          BRANCH: ${{ github.ref_name }}
-        run: |
-          pip install cryptography
-          python3 .github/scripts/send_fcm.py

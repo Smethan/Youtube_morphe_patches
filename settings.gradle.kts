@@ -36,11 +36,13 @@ settings {
 
 include(":patches:stub")
 
-// Include morphe-patcher as composite builds if they exist locally
+// Include public Morphe dependencies as composite builds when checked out locally.
+// The optional root lets CI keep them outside this repository's source tree.
+val morpheCompositeRoot = System.getenv("MORPHE_COMPOSITE_ROOT") ?: ".."
 mapOf(
     "morphe-patcher" to "app.morphe:morphe-patcher",
 ).forEach { (libraryPath, libraryName) ->
-    val libDir = file("../$libraryPath")
+    val libDir = file("$morpheCompositeRoot/$libraryPath")
     if (libDir.exists()) {
         includeBuild(libDir) {
             dependencySubstitution {
@@ -52,7 +54,7 @@ mapOf(
 
 // Include morphe-patches-library as composite build if it exists locally.
 // It is a multi-module project, so each artifact maps to a specific subproject.
-file("../morphe-patches-library").let { libDir ->
+file("$morpheCompositeRoot/morphe-patches-library").let { libDir ->
     if (libDir.exists()) {
         includeBuild(libDir) {
             dependencySubstitution {

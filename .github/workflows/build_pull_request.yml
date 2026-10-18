@@ -13,6 +13,12 @@ jobs:
   release:
     name: Build
     runs-on: ubuntu-latest
+    env:
+      MORPHE_COMPOSITE_ROOT: ${{ runner.temp }}/morphe-public-sources
+      MORPHE_LOCAL_MAVEN: ${{ runner.temp }}/morphe-maven
+      GRADLE_OPTS: -Dmaven.repo.local=${{ runner.temp }}/morphe-maven
+      GITHUB_ACTOR: public-source-build
+      GITHUB_TOKEN: unused
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -26,16 +32,18 @@ jobs:
       - name: Cache Gradle
         uses: burrunan/gradle-cache-action@v3
 
+      - name: Install Android 36 SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' < <(yes)
+
+      - name: Prepare public Morphe build dependencies
+        run: bash scripts/build-from-public-sources.sh --prepare-only
+
       - name: Test
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew :patches:test :extensions:youtube:testDebugUnitTest --no-daemon
 
       # buildAndroid adds DEX to the jar in place. A later JVM task can recreate
       # that same archive without DEX, so Android packaging must run last.
       - name: Build Android bundle
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew :patches:buildAndroid --no-daemon
 
       - name: Upload artifacts
