@@ -35,7 +35,9 @@ export GITHUB_ACTOR=${GITHUB_ACTOR:-public-source-build}
 export GITHUB_TOKEN=${GITHUB_TOKEN:-unused}
 
 "$repo_root/gradlew" -p "$source_root/morphe-patches-gradle-plugin" \
-    -Dmaven.repo.local="$maven_repo" publishToMavenLocal --no-daemon
+    -Dmaven.repo.local="$maven_repo" publishToMavenLocal --no-daemon \
+    -x signPluginMavenPublication \
+    -x signPatchesSettingsPluginPluginMarkerMavenPublication
 
 if [[ ${1:-} == --prepare-only ]]; then
     exit 0
