@@ -1,3 +1,16 @@
+## [1.48.0-dev.13](https://github.com/Smethan/Youtube_morphe_patches/compare/v1.48.0-dev.12...v1.48.0-dev.13) (2026-10-18)
+
+### 🐛 Bug Fixes
+
+* install Android command line tools in CI ([bcc9206](https://github.com/Smethan/Youtube_morphe_patches/commit/bcc92062814ce02aa935044789b7d89a46c7689a))
+* publish public plugin locally without signing ([bea4efd](https://github.com/Smethan/Youtube_morphe_patches/commit/bea4efde25ae06da8ebde21b9f2f0f4794195839))
+* skip signing local public-source plugin artifacts ([0553650](https://github.com/Smethan/Youtube_morphe_patches/commit/0553650e243a72332d13946b16ec1525ca3962de))
+* use valid runner paths in fork workflows ([e03e017](https://github.com/Smethan/Youtube_morphe_patches/commit/e03e017e7da7700885edc4653e519cdfc4979300))
+
+### ✨ New Features
+
+* save YouTube community post images ([8b426c4](https://github.com/Smethan/Youtube_morphe_patches/commit/8b426c413a2a146c90b23c21df33fe37e2606251))
+
 ## [1.48.0-dev.12](https://github.com/MorpheApp/morphe-patches/compare/v1.48.0-dev.11...v1.48.0-dev.12) (2026-10-18)
 
 ### 🐛 Bug Fixes

@@ -26,7 +26,7 @@ This fork retains the upstream patch catalog and records fork changes in its Git
 ## 🩹 Patches list
 
 <!-- PATCHES_START -->
-> **[v1.48.0-dev.12](https://github.com/Smethan/Youtube_morphe_patches/releases/tag/v1.48.0-dev.12)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;185 patches total
+> **[v1.48.0-dev.13](https://github.com/Smethan/Youtube_morphe_patches/releases/tag/v1.48.0-dev.13)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;185 patches total
 <details>
 <summary>📦 YouTube&nbsp;&nbsp;•&nbsp;&nbsp;101 patches</summary>
 <br>
