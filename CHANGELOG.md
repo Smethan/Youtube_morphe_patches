@@ -1,3 +1,9 @@
+## [1.48.0-dev.15](https://github.com/Smethan/Youtube_morphe_patches/compare/v1.48.0-dev.14...v1.48.0-dev.15) (2026-10-18)
+
+### 🐛 Bug Fixes
+
+* show image actions in Litho post menus ([f677f1a](https://github.com/Smethan/Youtube_morphe_patches/commit/f677f1a2760429c0c5f11e21dac5c92ff6c717ec))
+
 ## [1.48.0-dev.14](https://github.com/Smethan/Youtube_morphe_patches/compare/v1.48.0-dev.13...v1.48.0-dev.14) (2026-10-18)
 
 ### 🐛 Bug Fixes
