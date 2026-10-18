@@ -26,7 +26,7 @@ This fork retains the upstream patch catalog and records fork changes in its Git
 ## 🩹 Patches list
 
 <!-- PATCHES_START -->
-> **[v1.48.0-dev.13](https://github.com/Smethan/Youtube_morphe_patches/releases/tag/v1.48.0-dev.13)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;185 patches total
+> **[v1.48.0-dev.14](https://github.com/Smethan/Youtube_morphe_patches/releases/tag/v1.48.0-dev.14)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;185 patches total
 <details>
 <summary>📦 YouTube&nbsp;&nbsp;•&nbsp;&nbsp;101 patches</summary>
 <br>
@@ -122,7 +122,7 @@ This fork retains the upstream patch catalog and records fork changes in its Git
 | [Restore original titles](#restore-original-titles) | Adds an option to show the original video titles, video descriptions and channel descriptions instead of the auto-translated ones. |  |
 | [Return YouTube Dislike](#return-youtube-dislike) | Adds an option to show the dislike count of videos with Return YouTube Dislike. |  |
 | [Sanitize sharing links](#sanitize-sharing-links) | Removes the tracking query parameters from shared links. |  |
-| [Save community post images](#save-community-post-images) | Adds Save current image and Save all images to a community post's three-dot menu. |  |
+| [Save community post images](#save-community-post-images) | Adds image-saving actions to a community post's three-dot menu. |  |
 | [Save to Watch later](#save-to-watch-later) | Adds an option to display save to Watch later button in the video player. |  |
 | [Seekbar](#seekbar) | Adds options to show old seekbar thumbnails, disable precise seeking when swiping up on the seekbar, slide to seek instead of playing at 2x speed when pressing and holding, tapping the player seekbar to seek, hiding the video player seekbar, enabling seeking in live streams, and expanding the live stream DVR duration. |  |
 | [Series tracking](#series-tracking) | Adds a series library to History with local progress and episode continuation. This patch works with YouTube 21.02 and newer. |  |

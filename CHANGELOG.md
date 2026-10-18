@@ -1,3 +1,9 @@
+## [1.48.0-dev.14](https://github.com/Smethan/Youtube_morphe_patches/compare/v1.48.0-dev.13...v1.48.0-dev.14) (2026-10-18)
+
+### 🐛 Bug Fixes
+
+* add post menu image save actions ([5f988e3](https://github.com/Smethan/Youtube_morphe_patches/commit/5f988e3de92503801ef4e7ae26b8eb74707fcb35))
+
 ## [1.48.0-dev.13](https://github.com/Smethan/Youtube_morphe_patches/compare/v1.48.0-dev.12...v1.48.0-dev.13) (2026-10-18)
 
 ### 🐛 Bug Fixes
