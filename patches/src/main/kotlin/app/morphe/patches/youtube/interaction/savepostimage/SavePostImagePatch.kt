@@ -90,9 +90,9 @@ val savePostImagePatch = bytecodePatch(
             """,
         )
 
-        // p2 is the button, p3 is YouTube's menu tag, and p0 holds the native
-        // popup. The extension captures post image URLs before the menu opens,
-        // then appends its own actions after YouTube has shown the popup. These
+        // p2 is the button, p3 is YouTube's menu tag, p1 is its menu model, and p0 holds the native
+        // popup. The extension captures post image URLs and prepares actions
+        // before YouTube shows the ListPopupWindow, with an alternate popup fallback. These
         // parameters occupy high registers in this method, so copy them into
         // unused entry locals for the non-range invoke-static instruction.
         PostOverflowMenuFingerprint.method.addInstructions(
@@ -101,7 +101,8 @@ val savePostImagePatch = bytecodePatch(
                 move-object/from16 v0, p2
                 move-object/from16 v1, p0
                 move-object/from16 v2, p3
-                invoke-static { v0, v1, v2 }, $EXTENSION_CLASS->onPostMenuOpening(Landroid/view/View;Ljava/lang/Object;Ljava/lang/Object;)V
+                move-object/from16 v3, p1
+                invoke-static { v0, v1, v2, v3 }, $EXTENSION_CLASS->onPostMenuOpening(Landroid/view/View;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V
             """,
         )
     }
