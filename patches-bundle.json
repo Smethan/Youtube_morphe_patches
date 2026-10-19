@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-10-18T18:25:08",
-  "description": "## [1.48.0-dev.15](https://github.com/Smethan/Youtube_morphe_patches/compare/v1.48.0-dev.14...v1.48.0-dev.15) (2026-10-18)\n\n### 🐛 Bug Fixes\n\n* show image actions in Litho post menus ([f677f1a](https://github.com/Smethan/Youtube_morphe_patches/commit/f677f1a2760429c0c5f11e21dac5c92ff6c717ec))",
-  "download_url": "https://github.com/Smethan/Youtube_morphe_patches/releases/download/v1.48.0-dev.15/patches-1.48.0-dev.15.mpp",
+  "created_at": "2026-10-19T14:50:26",
+  "description": "## [1.48.0-dev.16](https://github.com/Smethan/Youtube_morphe_patches/compare/v1.48.0-dev.15...v1.48.0-dev.16) (2026-10-19)\n\n### 🐛 Bug Fixes\n\n* follow community post page redirects ([4c05fa9](https://github.com/Smethan/Youtube_morphe_patches/commit/4c05fa9d927427a76084c617adfebce855920855))",
+  "download_url": "https://github.com/Smethan/Youtube_morphe_patches/releases/download/v1.48.0-dev.16/patches-1.48.0-dev.16.mpp",
   "signature_download_url": "",
-  "version": "1.48.0-dev.15"
+  "version": "1.48.0-dev.16"
 }

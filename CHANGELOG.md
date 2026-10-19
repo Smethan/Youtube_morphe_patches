@@ -1,3 +1,9 @@
+## [1.48.0-dev.16](https://github.com/Smethan/Youtube_morphe_patches/compare/v1.48.0-dev.15...v1.48.0-dev.16) (2026-10-19)
+
+### 🐛 Bug Fixes
+
+* follow community post page redirects ([4c05fa9](https://github.com/Smethan/Youtube_morphe_patches/commit/4c05fa9d927427a76084c617adfebce855920855))
+
 ## [1.48.0-dev.15](https://github.com/Smethan/Youtube_morphe_patches/compare/v1.48.0-dev.14...v1.48.0-dev.15) (2026-10-18)
 
 ### 🐛 Bug Fixes
