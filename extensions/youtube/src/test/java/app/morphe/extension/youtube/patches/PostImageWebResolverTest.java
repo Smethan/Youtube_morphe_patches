@@ -8,9 +8,12 @@
 package app.morphe.extension.youtube.patches;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
+import java.net.URL;
 import java.util.List;
 
 public class PostImageWebResolverTest {
@@ -82,4 +85,20 @@ public class PostImageWebResolverTest {
         String html = "<script>var ytInitialData = '" + escaped + "';</script>";
         assertEquals(expected, PostImageWebResolver.extract(html, POST_ID));
     }
+
+    @Test public void acceptsOnlySamePostOnYouTubeRedirect() throws Exception {
+        assertTrue(PostImageWebResolver.isApprovedPostPageUrl(
+                new URL("https://m.youtube.com/post/" + POST_ID), POST_ID));
+        assertTrue(PostImageWebResolver.isApprovedPostPageUrl(
+                new URL("https://www.youtube.com/post/" + POST_ID + "?app=desktop"), POST_ID));
+        assertFalse(PostImageWebResolver.isApprovedPostPageUrl(
+                new URL("https://consent.youtube.com/m?continue=/post/" + POST_ID), POST_ID));
+        assertFalse(PostImageWebResolver.isApprovedPostPageUrl(
+                new URL("https://m.youtube.com/post/UgkxAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), POST_ID));
+        assertFalse(PostImageWebResolver.isApprovedPostPageUrl(
+                new URL("http://m.youtube.com/post/" + POST_ID), POST_ID));
+        assertFalse(PostImageWebResolver.isApprovedPostPageUrl(
+                new URL("https://m.youtube.com.evil.example/post/" + POST_ID), POST_ID));
+    }
+
 }

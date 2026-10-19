@@ -33,6 +33,7 @@ public final class PostImageWebResolver {
     private static final int READ_TIMEOUT_MILLISECONDS = 7000;
     private static final int MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
     private static final int MAX_IMAGES = 10;
+    private static final int MAX_POST_REDIRECTS = 3;
     private static final String POST_ID_PATTERN = "(?:Ugkx[A-Za-z0-9_-]{32}|Ug[A-Za-z0-9_-]{10,})";
 
     private PostImageWebResolver() {}
@@ -46,38 +47,72 @@ public final class PostImageWebResolver {
             throw new IllegalArgumentException("Invalid YouTube community post ID");
         }
 
-        HttpURLConnection connection = null;
-        try {
-            URL url = new URL("https://www.youtube.com/post/" + postId);
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setInstanceFollowRedirects(false);
-            connection.setConnectTimeout(CONNECT_TIMEOUT_MILLISECONDS);
-            connection.setReadTimeout(READ_TIMEOUT_MILLISECONDS);
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("Accept", "text/html");
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36");
+        URL url = new URL("https://www.youtube.com/post/" + postId);
+        for (int redirects = 0; redirects <= MAX_POST_REDIRECTS; redirects++) {
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            try {
+                connection.setInstanceFollowRedirects(false);
+                connection.setConnectTimeout(CONNECT_TIMEOUT_MILLISECONDS);
+                connection.setReadTimeout(READ_TIMEOUT_MILLISECONDS);
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("Accept", "text/html");
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36");
 
-            int status = connection.getResponseCode();
-            if (status != HttpURLConnection.HTTP_OK) {
-                throw new IOException("YouTube post page returned HTTP " + status);
-            }
-            String contentType = connection.getContentType();
-            if (contentType != null && !contentType.toLowerCase(java.util.Locale.ROOT).contains("text/html")) {
-                throw new IOException("YouTube post page did not return HTML");
-            }
-            long contentLength = connection.getContentLengthLong();
-            if (contentLength > MAX_RESPONSE_BYTES) {
-                throw new IOException("YouTube post page exceeds the 2 MiB response limit");
-            }
+                int status = connection.getResponseCode();
+                if (isRedirect(status)) {
+                    if (redirects == MAX_POST_REDIRECTS) {
+                        throw new IOException("Too many YouTube post page redirects");
+                    }
+                    String location = connection.getHeaderField("Location");
+                    if (location == null || location.length() > 4096) {
+                        throw new IOException("YouTube post page redirect has no valid Location");
+                    }
+                    URL next = new URL(url, location);
+                    if (!isApprovedPostPageUrl(next, postId)) {
+                        throw new IOException("YouTube post page redirected outside the requested post");
+                    }
+                    url = next;
+                    continue;
+                }
+                if (status != HttpURLConnection.HTTP_OK) {
+                    throw new IOException("YouTube post page returned HTTP " + status);
+                }
+                String contentType = connection.getContentType();
+                if (contentType != null && !contentType.toLowerCase(java.util.Locale.ROOT).contains("text/html")) {
+                    throw new IOException("YouTube post page did not return HTML");
+                }
+                long contentLength = connection.getContentLengthLong();
+                if (contentLength > MAX_RESPONSE_BYTES) {
+                    throw new IOException("YouTube post page exceeds the 2 MiB response limit");
+                }
 
-            byte[] body;
-            try (InputStream stream = connection.getInputStream()) {
-                body = readBounded(stream);
+                byte[] body;
+                try (InputStream stream = connection.getInputStream()) {
+                    body = readBounded(stream);
+                }
+                return extract(new String(body, StandardCharsets.UTF_8), postId);
+            } finally {
+                connection.disconnect();
             }
-            return extract(new String(body, StandardCharsets.UTF_8), postId);
-        } finally {
-            if (connection != null) connection.disconnect();
         }
+        throw new IOException("Too many YouTube post page redirects");
+    }
+
+    private static boolean isRedirect(int status) {
+        return status == HttpURLConnection.HTTP_MOVED_PERM
+                || status == HttpURLConnection.HTTP_MOVED_TEMP
+                || status == HttpURLConnection.HTTP_SEE_OTHER
+                || status == 307 || status == 308;
+    }
+
+    static boolean isApprovedPostPageUrl(URL url, String postId) {
+        if (!"https".equalsIgnoreCase(url.getProtocol()) || url.getUserInfo() != null
+                || (url.getPort() != -1 && url.getPort() != 443)
+                || url.getRef() != null || (url.getQuery() != null && url.getQuery().length() > 1024)
+                || !("/post/" + postId).equals(url.getPath())) return false;
+        String host = url.getHost().toLowerCase(java.util.Locale.ROOT);
+        return host.equals("www.youtube.com") || host.equals("m.youtube.com")
+                || host.equals("youtube.com");
     }
 
     static List<String> extract(String html, String postId) throws IOException {
